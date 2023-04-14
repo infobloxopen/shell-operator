@@ -27,12 +27,15 @@ RUN CGO_ENABLED=1 \
 # Final image
 FROM --platform=${TARGETPLATFORM:-linux/amd64} alpine:3.16
 ARG TARGETPLATFORM
-RUN apk --no-cache add ca-certificates bash sed tini && \
+RUN apk --no-cache add ca-certificates bash sed tini perl-utils && \
     kubectlArch=$(echo ${TARGETPLATFORM:-linux/amd64} | sed 's/\/v7//') && \
     echo "Download kubectl for ${kubectlArch}" && \
-    wget https://storage.googleapis.com/kubernetes-release/release/v1.21.10/bin/${kubectlArch}/kubectl -O /bin/kubectl && \
+    wget https://storage.googleapis.com/kubernetes-release/release/v1.23.6/bin/${kubectlArch}/kubectl -O /bin/kubectl && \
     chmod +x /bin/kubectl && \
-    mkdir /hooks
+    mkdir /hooks && \
+    wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 && \
+    chmod a+x /usr/local/bin/yq
+
 ADD frameworks/shell /frameworks/shell
 ADD shell_lib.sh /
 COPY --from=libjq /bin/jq /usr/bin
