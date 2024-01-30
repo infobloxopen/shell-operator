@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -11,6 +12,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	log "github.com/sirupsen/logrus"
+
+	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
 )
 
 type WebhookServer struct {
@@ -22,13 +25,21 @@ type WebhookServer struct {
 // Start runs https server to listen for AdmissionReview requests from the API-server.
 func (s *WebhookServer) Start() error {
 	// Load server certificate.
-	keyPair, err := tls.LoadX509KeyPair(
+	certWatcher, err := certwatcher.New(
 		s.Settings.ServerCertPath,
 		s.Settings.ServerKeyPath,
 	)
 	if err != nil {
 		return fmt.Errorf("load TLS certs: %v", err)
 	}
+
+	go func() {
+		if err := certWatcher.Start(context.TODO()); err != nil {
+			log.Errorf("Unable to watch cert: %v", err)
+			// Stop process if server can't start.
+			os.Exit(1)
+		}
+	}()
 
 	// Construct a hostname for certificate.
 	host := fmt.Sprintf("%s.%s",
@@ -37,8 +48,8 @@ func (s *WebhookServer) Start() error {
 	)
 
 	tlsConf := &tls.Config{
-		Certificates: []tls.Certificate{keyPair},
-		ServerName:   host,
+		GetCertificate: certWatcher.GetCertificate,
+		ServerName:     host,
 	}
 
 	// Load client CA if defined
