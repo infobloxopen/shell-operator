@@ -37,20 +37,32 @@ FROM --platform=${TARGETPLATFORM:-linux/amd64} registry.deckhouse.io/container-f
 
 ARG TARGETPLATFORM
 ARG kubectlVersion=v1.35.8
+ARG yqVersion=v4.54.1
 
-# Install runtime dependencies
+# Install runtime dependencies.
+# perl-utils provides `shasum` and yq provides YAML->JSON conversion, both
+# required by downstream consumers' shell-operator hooks (e.g. the
+# aws-tagging-operator chart's resource-change.sh, which shells out to both
+# with no fallback and fails closed under failurePolicy: Fail if missing).
 RUN apk --no-cache add \
     ca-certificates \
     bash \
     sed \
     tini \
-    curl
+    curl \
+    perl-utils
 
 # Determine kubectl architecture and download
 RUN kubectlArch=$(echo ${TARGETPLATFORM:-linux/amd64} | sed 's/\/v7//') && \
     echo "Downloading kubectl version ${kubectlVersion} for ${kubectlArch}" && \
     wget https://dl.k8s.io/release/${kubectlVersion}/bin/${kubectlArch}/kubectl -O /bin/kubectl && \
     chmod +x /bin/kubectl
+
+# Determine yq architecture and download
+RUN yqArch=$(echo ${TARGETPLATFORM:-linux/amd64} | sed 's#linux/##;s/\/v7//') && \
+    echo "Downloading yq version ${yqVersion} for linux ${yqArch}" && \
+    wget https://github.com/mikefarah/yq/releases/download/${yqVersion}/yq_linux_${yqArch} -O /usr/local/bin/yq && \
+    chmod +x /usr/local/bin/yq
 
 # Create hooks directory
 RUN mkdir /hooks
