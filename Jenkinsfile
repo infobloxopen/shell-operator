@@ -5,11 +5,7 @@ pipeline {
     label 'ubuntu_docker_label'
   }
   environment {
-    // signDockerImage() (jenkins.shared.library) reads env.HARBOR_SERVER, not
-    // REGISTRY -- without this override it silently falls back to the
-    // Jenkins-wide global default (core-harbor-prod.sdp.infoblox.com), which
-    // this chart's values.yaml and the cluster never pull from.
-    HARBOR_SERVER = "harbor.services.sdp.infoblox.com"
+    REGISTRY = "core-harbor-prod.sdp.infoblox.com"
     VERSION = sh(script: "git describe --always --long --tags", returnStdout: true).trim()
     TAG = "${env.VERSION}-j${env.BUILD_NUMBER}"
   }
