@@ -5,7 +5,9 @@ import (
 	"os"
 
 	"github.com/deckhouse/deckhouse/pkg/log"
+	"github.com/go-logr/logr/funcr"
 	"github.com/spf13/cobra"
+	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/flant/kube-client/klogtolog"
 	"github.com/flant/shell-operator/pkg/app"
@@ -26,6 +28,19 @@ func main() {
 
 	logger := log.NewLogger()
 	log.SetDefault(logger)
+
+	// controller-runtime components (e.g. pkg/webhook/server's certwatcher)
+	// use the generic logr interface, which is a separate sink from the
+	// deckhouse logger above. Without this, controller-runtime buffers log
+	// calls for ~30s then dumps a one-time diagnostic stack trace warning
+	// that log.SetLogger was never called -- bridge it to our logger instead.
+	ctrllog.SetLogger(funcr.New(func(prefix, args string) {
+		if prefix != "" {
+			logger.Info(prefix + ": " + args)
+			return
+		}
+		logger.Info(args)
+	}, funcr.Options{}))
 
 	rootCmd := &cobra.Command{
 		Use:   app.AppName,
