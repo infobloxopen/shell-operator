@@ -12,7 +12,9 @@ pipeline {
   stages {
     stage("Build Image") {
       steps {
-        sh 'docker build . -t tags-operator:$TAG'
+        // The Dockerfile uses RUN --mount (upstream image check), which needs BuildKit.
+        // The Docker 20.10 agents ship it but keep it off by default.
+        sh 'DOCKER_BUILDKIT=1 docker build . -t tags-operator:$TAG'
       }
     }
     stage("Push Image") {
