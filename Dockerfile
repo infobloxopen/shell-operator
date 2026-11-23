@@ -31,8 +31,7 @@ RUN GOOS=linux \
 FROM --platform=${TARGETPLATFORM:-linux/amd64} alpine:3.23@sha256:ff7f0c727dd796aa36787bfcd9a64bf35a6ce72a73451b3359fde849b6703d63
 
 ARG TARGETPLATFORM
-ARG kubectlVersion=v1.35.8
-ARG yqVersion=v4.54.1
+ARG yqVersion=v4.54.3
 
 # Install runtime dependencies.
 # yq (installed below) provides YAML->JSON conversion, required by downstream
@@ -41,7 +40,8 @@ ARG yqVersion=v4.54.1
 # under failurePolicy: Fail if missing). Those hooks hash with busybox
 # `sha1sum`; perl-utils (`shasum`) is not installed because perl carries
 # Critical CVEs with no fix.
-RUN apk --no-cache add \
+RUN apk --no-cache upgrade && \
+    apk --no-cache add \
     ca-certificates \
     bash \
     sed \
@@ -49,11 +49,8 @@ RUN apk --no-cache add \
     jq \
     curl
 
-# Determine kubectl architecture and download
-RUN kubectlArch=$(echo ${TARGETPLATFORM:-linux/amd64} | sed 's/\/v7//') && \
-    echo "Downloading kubectl version ${kubectlVersion} for ${kubectlArch}" && \
-    wget https://dl.k8s.io/release/${kubectlVersion}/bin/${kubectlArch}/kubectl -O /bin/kubectl && \
-    chmod +x /bin/kubectl
+# kubectl from Chainguard: upstream kubectl releases still ship vulnerable golang.org/x/net.
+COPY --from=harbor.services.sdp.infoblox.com/cgr-proxy/infoblox.com/kubectl:1.35@sha256:bd52cc149d870fde8406373ba14327f55163f0169779f204acb609f5fe0e9dad /usr/bin/kubectl-1.35 /bin/kubectl
 
 # Determine yq architecture and download
 RUN yqArch=$(echo ${TARGETPLATFORM:-linux/amd64} | sed 's#linux/##;s/\/v7//') && \
