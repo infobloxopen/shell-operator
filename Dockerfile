@@ -28,6 +28,23 @@ RUN GOOS=linux \
     -o shell-operator \
     ./cmd/shell-operator
 
+# kubectl built from source: upstream kubectl releases still ship vulnerable golang.org/x/net.
+FROM --platform=${TARGETPLATFORM:-linux/amd64} golang:1.26.4-alpine3.23@sha256:18b460dd17542c2ba43299a633cf6ebfc1115101509531471d7cfce1019af083 AS kubectl-builder
+
+ARG kubectlVersion=v1.35.10
+ARG kubectlCommit=ae6fece6fea92ecfcccd13af7d5f2ea8cb9b33fe
+
+RUN apk --no-cache add git && \
+    git clone --depth 1 --branch ${kubectlVersion} https://github.com/kubernetes/kubernetes.git /k8s && \
+    test "$(git -C /k8s rev-parse HEAD)" = "${kubectlCommit}"
+
+WORKDIR /k8s
+
+RUN go get golang.org/x/net@v0.62.0 golang.org/x/text@v0.43.0 && \
+    CGO_ENABLED=0 go build -mod=readonly -trimpath \
+    -ldflags="-s -w -X k8s.io/component-base/version.gitVersion=${kubectlVersion} -X k8s.io/component-base/version.gitCommit=${kubectlCommit} -X k8s.io/client-go/pkg/version.gitVersion=${kubectlVersion} -X k8s.io/client-go/pkg/version.gitCommit=${kubectlCommit}" \
+    -o /kubectl ./cmd/kubectl
+
 FROM --platform=${TARGETPLATFORM:-linux/amd64} alpine:3.23@sha256:ff7f0c727dd796aa36787bfcd9a64bf35a6ce72a73451b3359fde849b6703d63
 
 ARG TARGETPLATFORM
@@ -49,8 +66,7 @@ RUN apk --no-cache upgrade && \
     jq \
     curl
 
-# kubectl from Chainguard: upstream kubectl releases still ship vulnerable golang.org/x/net.
-COPY --from=harbor.services.sdp.infoblox.com/cgr-proxy/infoblox.com/kubectl:1.35@sha256:bd52cc149d870fde8406373ba14327f55163f0169779f204acb609f5fe0e9dad /usr/bin/kubectl-1.35 /bin/kubectl
+COPY --from=kubectl-builder /kubectl /bin/kubectl
 
 # Determine yq architecture and download
 RUN yqArch=$(echo ${TARGETPLATFORM:-linux/amd64} | sed 's#linux/##;s/\/v7//') && \
