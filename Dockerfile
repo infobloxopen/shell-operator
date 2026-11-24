@@ -28,11 +28,27 @@ RUN GOOS=linux \
     -o shell-operator \
     ./cmd/shell-operator
 
+# kubectl built from source: upstream kubectl releases still ship vulnerable golang.org/x/net.
+FROM --platform=${TARGETPLATFORM:-linux/amd64} golang:1.26.4-alpine3.23@sha256:18b460dd17542c2ba43299a633cf6ebfc1115101509531471d7cfce1019af083 AS kubectl-builder
+
+ARG kubectlVersion=v1.35.10
+ARG kubectlCommit=ae6fece6fea92ecfcccd13af7d5f2ea8cb9b33fe
+
+RUN apk --no-cache add git && \
+    git clone --depth 1 --branch ${kubectlVersion} https://github.com/kubernetes/kubernetes.git /k8s && \
+    test "$(git -C /k8s rev-parse HEAD)" = "${kubectlCommit}"
+
+WORKDIR /k8s
+
+RUN go get golang.org/x/net@v0.62.0 golang.org/x/text@v0.43.0 && \
+    CGO_ENABLED=0 go build -mod=readonly -trimpath \
+    -ldflags="-s -w -X k8s.io/component-base/version.gitVersion=${kubectlVersion} -X k8s.io/component-base/version.gitCommit=${kubectlCommit} -X k8s.io/client-go/pkg/version.gitVersion=${kubectlVersion} -X k8s.io/client-go/pkg/version.gitCommit=${kubectlCommit}" \
+    -o /kubectl ./cmd/kubectl
+
 FROM --platform=${TARGETPLATFORM:-linux/amd64} alpine:3.23@sha256:ff7f0c727dd796aa36787bfcd9a64bf35a6ce72a73451b3359fde849b6703d63
 
 ARG TARGETPLATFORM
-ARG kubectlVersion=v1.35.8
-ARG yqVersion=v4.54.1
+ARG yqVersion=v4.54.3
 
 # Install runtime dependencies.
 # yq (installed below) provides YAML->JSON conversion, required by downstream
@@ -41,7 +57,8 @@ ARG yqVersion=v4.54.1
 # under failurePolicy: Fail if missing). Those hooks hash with busybox
 # `sha1sum`; perl-utils (`shasum`) is not installed because perl carries
 # Critical CVEs with no fix.
-RUN apk --no-cache add \
+RUN apk --no-cache upgrade && \
+    apk --no-cache add \
     ca-certificates \
     bash \
     sed \
@@ -49,11 +66,7 @@ RUN apk --no-cache add \
     jq \
     curl
 
-# Determine kubectl architecture and download
-RUN kubectlArch=$(echo ${TARGETPLATFORM:-linux/amd64} | sed 's/\/v7//') && \
-    echo "Downloading kubectl version ${kubectlVersion} for ${kubectlArch}" && \
-    wget https://dl.k8s.io/release/${kubectlVersion}/bin/${kubectlArch}/kubectl -O /bin/kubectl && \
-    chmod +x /bin/kubectl
+COPY --from=kubectl-builder /kubectl /bin/kubectl
 
 # Determine yq architecture and download
 RUN yqArch=$(echo ${TARGETPLATFORM:-linux/amd64} | sed 's#linux/##;s/\/v7//') && \
